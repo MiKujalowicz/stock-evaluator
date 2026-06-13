@@ -1,0 +1,30 @@
+[project]
+name = "stock-predictor"
+version = "0.1.0"
+description = "A multi-agent stock prediction system using LangGraph and FastAPI"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "langgraph>=0.0.30",
+    "langchain-core>=0.1.30",
+    "langchain-openai>=0.1.0",
+    "langchain-google-genai>=1.0.0",
+    "yfinance>=0.2.37",
+    "pandas>=2.2.1",
+    "pydantic-settings>=2.2.1",
+    "vaderSentiment>=3.3.2",
+    "sse-starlette>=2.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stock_predictor"]

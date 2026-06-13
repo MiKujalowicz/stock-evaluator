@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AURA // Multi-Agent Stock Predictor Panel</title>
+    
+    <!-- Fonts and Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- CSS Sheet -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Chart.js & Marked.js for Markdown reports -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        
+        <!-- Sidebar: Inputs & History -->
+        <aside class="sidebar">
+            <div class="brand">
+                <i class="fa-solid fa-microchip-ai brand-icon"></i>
+                <div class="brand-text">
+                    <h1>AURA</h1>
+                    <span>STOCK AGENT PANEL</span>
+                </div>
+            </div>
+            
+            <section class="section-container">
+                <h2><i class="fa-solid fa-sliders"></i> Configuration</h2>
+                <form id="predict-form">
+                    <div class="input-group">
+                        <label for="ticker">Stock Ticker</label>
+                        <div class="ticker-input-wrapper">
+                            <input type="text" id="ticker" placeholder="e.g. TSLA, AAPL, NVDA" required>
+                            <span class="ticker-badge" id="ticker-auto-badge">PENDING</span>
+                        </div>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="press-release">Press Release / Financial News</label>
+                        <textarea id="press-release" rows="8" placeholder="Paste the news text or company announcement here to initiate the analysis..." required></textarea>
+                    </div>
+                    
+                    <button type="submit" id="btn-submit" class="glow-button">
+                        <span class="btn-text">Initiate Expert Debate</span>
+                        <i class="fa-solid fa-bolt btn-icon"></i>
+                    </button>
+                </form>
+            </section>
+            
+            <section class="section-container history-section">
+                <h2><i class="fa-solid fa-clock-rotate-left"></i> Analysis History</h2>
+                <div class="history-list" id="history-container">
+                    <div class="empty-history">No past analyses found.</div>
+                </div>
+            </section>
+        </aside>
+        
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Top Status Navigation -->
+            <header class="main-header">
+                <div class="header-title">
+                    <h2 id="header-stock-name">Select Ticker to Begin</h2>
+                    <span id="header-stock-meta">Multi-agent committee review panel</span>
+                </div>
+                
+                <!-- Live Agent State Indicators -->
+                <div class="agent-timeline">
+                    <div class="timeline-step" id="step-fetch_data" data-step="fetch_data">
+                        <div class="step-icon"><i class="fa-solid fa-database"></i></div>
+                        <span>Market Data</span>
+                    </div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-step" id="step-bullish_analyst" data-step="bullish_analyst">
+                        <div class="step-icon"><i class="fa-solid fa-arrow-trend-up"></i></div>
+                        <span>Bull Analyst</span>
+                    </div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-step" id="step-bearish_analyst" data-step="bearish_analyst">
+                        <div class="step-icon"><i class="fa-solid fa-arrow-trend-down"></i></div>
+                        <span>Bear Analyst</span>
+                    </div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-step" id="step-moderator" data-step="moderator">
+                        <div class="step-icon"><i class="fa-solid fa-gavel"></i></div>
+                        <span>Moderator</span>
+                    </div>
+                </div>
+            </header>
+            
+            <!-- Live Progress / Audit Logs Console -->
+            <section class="logs-console collapsed" id="logs-section">
+                <div class="console-header" id="toggle-console">
+                    <div class="console-title">
+                        <span class="pulse-indicator" id="console-pulse"></span>
+                        <h3><i class="fa-solid fa-terminal"></i> Agent Execution Log</h3>
+                    </div>
+                    <i class="fa-solid fa-chevron-up toggle-icon" id="console-chevron"></i>
+                </div>
+                <div class="console-body" id="console-output">
+                    <div class="log-line system">Standing by. Enter configuration details and run.</div>
+                </div>
+            </section>
+            
+            <!-- Dashboard Grid -->
+            <div class="dashboard-grid">
+                
+                <!-- ROW 1: Market Fundamentals & Chart -->
+                <div class="grid-item full-width fundamentals-chart-card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-chart-line"></i> Market Fundamentals & 30-Day Trend</h3>
+                        <div class="current-price-badge" id="price-badge-container" style="display: none;">
+                            <span class="price-label">PRICE:</span>
+                            <span class="price-value" id="metrics-price">$0.00</span>
+                        </div>
+                    </div>
+                    
+                    <div class="fundamentals-wrapper">
+                        <!-- Technical Metrics Grid -->
+                        <div class="metrics-grid">
+                            <div class="metric-card">
+                                <div class="metric-icon pe-icon"><i class="fa-solid fa-ratio">P/E</i></div>
+                                <div class="metric-details">
+                                    <span class="metric-label">P/E Ratio</span>
+                                    <span class="metric-value" id="metrics-pe">N/A</span>
+                                </div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-icon eps-icon"><i class="fa-solid fa-coins"></i></div>
+                                <div class="metric-details">
+                                    <span class="metric-label">Trailing EPS</span>
+                                    <span class="metric-value" id="metrics-eps">N/A</span>
+                                </div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-icon cap-icon"><i class="fa-solid fa-vault"></i></div>
+                                <div class="metric-details">
+                                    <span class="metric-label">Market Cap</span>
+                                    <span class="metric-value" id="metrics-cap">N/A</span>
+                                </div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-icon sector-icon"><i class="fa-solid fa-building-columns"></i></div>
+                                <div class="metric-details">
+                                    <span class="metric-label">Sector / Industry</span>
+                                    <span class="metric-value" id="metrics-sector">N/A</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Stock Chart -->
+                        <div class="chart-container">
+                            <canvas id="stockChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- ROW 2: The Agent Debate Console -->
+                <div class="grid-item half-width agent-card bull-card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-arrow-trend-up"></i> Bullish Analyst (Advocate)</h3>
+                        <span class="badge bull-badge">BULLISH SENTIMENT</span>
+                    </div>
+                    <div class="agent-body markdown-body" id="bull-thesis-output">
+                        <div class="agent-placeholder">
+                            <i class="fa-solid fa-circle-nodes placeholder-icon"></i>
+                            <p>Awaiting data fetch to formulate bullish growth case...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="grid-item half-width agent-card bear-card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-arrow-trend-down"></i> Bearish Analyst (Challenger)</h3>
+                        <span class="badge bear-badge">BEARISH SENTIMENT</span>
+                    </div>
+                    <div class="agent-body markdown-body" id="bear-thesis-output">
+                        <div class="agent-placeholder">
+                            <i class="fa-solid fa-triangle-exclamation placeholder-icon"></i>
+                            <p>Awaiting bullish thesis to challenge assumptions...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- ROW 3: Synthesis Report & Outcomes -->
+                <div class="grid-item full-width synthesis-card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-gavel"></i> Moderator Consensus & Prediction</h3>
+                        <div class="recommendation-badge-wrapper">
+                            <span class="rating-badge" id="prediction-rating">AWAITING REVIEW</span>
+                        </div>
+                    </div>
+                    
+                    <div class="synthesis-wrapper">
+                        <!-- Predictions Panel -->
+                        <div class="prediction-panel">
+                            <div class="pred-item direction-item">
+                                <span class="pred-label">Projected Trend</span>
+                                <div class="pred-display" id="pred-direction">
+                                    <i class="fa-solid fa-circle-question"></i>
+                                    <span>STABLE</span>
+                                </div>
+                            </div>
+                            
+                            <div class="pred-item change-item">
+                                <span class="pred-label">30-Day Outlook</span>
+                                <span class="pred-value" id="pred-change">0.00%</span>
+                            </div>
+                            
+                            <div class="pred-item confidence-item">
+                                <span class="pred-label">Agent Confidence</span>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill" id="pred-confidence-fill" style="width: 0%"></div>
+                                </div>
+                                <span class="pred-value" id="pred-confidence-value">0%</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Synthesis Report Markdown -->
+                        <div class="report-content markdown-body" id="synthesis-report-output">
+                            <div class="report-placeholder">
+                                <i class="fa-solid fa-clipboard-question placeholder-icon"></i>
+                                <p>The Moderator will synthesize the debate transcripts, analyze fundamentals, and compile the final investment decision report here.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </main>
+        
+    </div>
+</body>
+</html>
