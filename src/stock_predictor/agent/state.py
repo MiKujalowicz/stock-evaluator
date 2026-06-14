@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, TypedDict
 
-class AgentState(TypedDict):
+class AgentState(TypedDict, total=False):
     """
     State representing the current execution context of the stock prediction panel.
     """
@@ -14,3 +14,5 @@ class AgentState(TypedDict):
     prediction: Dict[str, Any]
     logs: List[str]
     current_step: str
+    iteration: int
+    consensus: bool

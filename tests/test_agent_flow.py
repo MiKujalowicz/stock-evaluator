@@ -5,8 +5,8 @@ from mock_data_fetcher import fetch_fundamentals_mock, fetch_chart_data_mock
 
 def test_fetch_data_node_success(monkeypatch):
     # Monkeypatch the fetcher imported in the agent nodes namespace
-    monkeypatch.setattr("stock_predictor.agent.nodes.fetch_fundamentals", fetch_fundamentals_mock)
-    monkeypatch.setattr("stock_predictor.agent.nodes.fetch_chart_data", fetch_chart_data_mock)
+    monkeypatch.setattr("stock_predictor.agent.nodes.fetch_data.fetch_fundamentals", fetch_fundamentals_mock)
+    monkeypatch.setattr("stock_predictor.agent.nodes.fetch_data.fetch_chart_data", fetch_chart_data_mock)
     
     initial_state = {
         "ticker": "AAPL",
@@ -24,8 +24,8 @@ def test_fetch_data_node_success(monkeypatch):
 
 def test_fetch_data_node_failure(monkeypatch):
     # Patch the fetcher in the nodes namespace to raise ValueError
-    monkeypatch.setattr("stock_predictor.agent.nodes.fetch_fundamentals", fetch_fundamentals_mock)
-    monkeypatch.setattr("stock_predictor.agent.nodes.fetch_chart_data", fetch_chart_data_mock)
+    monkeypatch.setattr("stock_predictor.agent.nodes.fetch_data.fetch_fundamentals", fetch_fundamentals_mock)
+    monkeypatch.setattr("stock_predictor.agent.nodes.fetch_data.fetch_chart_data", fetch_chart_data_mock)
     
     initial_state = {
         "ticker": "INVALID",
@@ -39,8 +39,8 @@ def test_fetch_data_node_failure(monkeypatch):
 @pytest.mark.asyncio
 async def test_full_graph_execution(monkeypatch):
     # Monkeypatch the fetcher in the nodes namespace
-    monkeypatch.setattr("stock_predictor.agent.nodes.fetch_fundamentals", fetch_fundamentals_mock)
-    monkeypatch.setattr("stock_predictor.agent.nodes.fetch_chart_data", fetch_chart_data_mock)
+    monkeypatch.setattr("stock_predictor.agent.nodes.fetch_data.fetch_fundamentals", fetch_fundamentals_mock)
+    monkeypatch.setattr("stock_predictor.agent.nodes.fetch_data.fetch_chart_data", fetch_chart_data_mock)
     
     # Clear LLM API keys to force rules-based fallback mode
     monkeypatch.setenv("OPENAI_API_KEY", "")
