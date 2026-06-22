@@ -31,9 +31,23 @@
                 </div>
             </div>
             
-            <section class="section-container">
-                <h2><i class="fa-solid fa-sliders"></i> Configuration</h2>
-                <form id="predict-form">
+            <section class="section-container configuration-section">
+                <button type="button" class="section-toggle" id="configuration-toggle" aria-expanded="true" aria-controls="configuration-panel">
+                    <span><i class="fa-solid fa-sliders"></i> Configuration</span>
+                    <i class="fa-solid fa-chevron-up toggle-icon" id="configuration-chevron"></i>
+                </button>
+                <div class="configuration-panel" id="configuration-panel">
+                    <div class="theme-control" role="group" aria-label="Theme">
+                        <button type="button" class="theme-option" data-theme="dark">
+                            <i class="fa-solid fa-moon"></i>
+                            <span>Dark</span>
+                        </button>
+                        <button type="button" class="theme-option" data-theme="light">
+                            <i class="fa-solid fa-sun"></i>
+                            <span>Light</span>
+                        </button>
+                    </div>
+                    <form id="predict-form">
                     <div class="input-group">
                         <label for="ticker">Stock Ticker</label>
                         <div class="ticker-input-wrapper">
@@ -51,7 +65,8 @@
                         <span class="btn-text">Initiate Expert Debate</span>
                         <i class="fa-solid fa-bolt btn-icon"></i>
                     </button>
-                </form>
+                    </form>
+                </div>
             </section>
             
             <section class="section-container history-section">
@@ -160,6 +175,14 @@
                             <canvas id="stockChart"></canvas>
                         </div>
                     </div>
+
+                    <div class="user-input-review hidden" id="user-input-review">
+                        <div class="user-input-header">
+                            <i class="fa-solid fa-newspaper"></i>
+                            <span>User Input</span>
+                        </div>
+                        <div class="user-input-content" id="user-input-content"></div>
+                    </div>
                 </div>
                 
                 <!-- ROW 2: The Agent Debate Console -->
@@ -234,8 +257,30 @@
                 </div>
                 
             </div>
+
+            <section class="conversation-panel" id="conversation-panel">
+                <div class="card-header conversation-header">
+                    <h3><i class="fa-solid fa-comments"></i> Expert Conversation</h3>
+                    <span class="conversation-status" id="conversation-status">Awaiting debate</span>
+                </div>
+                <div class="conversation-layout">
+                    <div class="conversation-list" id="conversation-list">
+                        <div class="conversation-empty">No expert turns yet.</div>
+                    </div>
+                    <div class="conversation-detail">
+                        <div class="conversation-detail-meta" id="conversation-detail-meta">Select a turn to review the agent position.</div>
+                        <div class="conversation-detail-content markdown-body" id="conversation-detail-content">
+                            <div class="agent-placeholder inline-placeholder">
+                                <i class="fa-solid fa-comments placeholder-icon"></i>
+                                <p>The expert debate transcript will appear here as agents respond.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </main>
         
     </div>
+    <script src="app.js"></script>
 </body>
 </html>

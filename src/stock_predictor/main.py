@@ -66,6 +66,45 @@ def save_to_history(record: dict):
     except Exception as e:
         logger.error(f"Error saving to history file: {e}")
 
+def build_conversation_turn(step: str, node_output: dict, order: int) -> Optional[dict]:
+    """
+    Builds a reviewable conversation turn from a streamed graph node output.
+    Returns None for workflow steps that do not produce expert commentary.
+    """
+    role_map = {
+        "bullish_analyst": {
+            "role": "bullish",
+            "label": "Bullish Analyst",
+            "content_key": "bullish_thesis",
+        },
+        "bearish_analyst": {
+            "role": "bearish",
+            "label": "Bearish Analyst",
+            "content_key": "bearish_thesis",
+        },
+        "moderator": {
+            "role": "moderator",
+            "label": "Moderator",
+            "content_key": "synthesis_report",
+        },
+    }
+    turn_config = role_map.get(step)
+    if not turn_config:
+        return None
+
+    content = node_output.get(turn_config["content_key"])
+    if not content:
+        return None
+
+    return {
+        "step": step,
+        "role": turn_config["role"],
+        "label": turn_config["label"],
+        "iteration": node_output.get("iteration", 0),
+        "content": content,
+        "order": order,
+    }
+
 # Routes
 @app.get("/api/history")
 async def get_history():
@@ -116,6 +155,7 @@ async def predict_stream(request: PredictRequest):
         }
         
         final_state = {}
+        conversation = []
         
         try:
             # Stream the graph step transitions asynchronously
@@ -125,6 +165,10 @@ async def predict_stream(request: PredictRequest):
                     for key, val in node_output.items():
                         if val is not None:
                             final_state[key] = val
+
+                    turn = build_conversation_turn(node_name, node_output, len(conversation) + 1)
+                    if turn:
+                        conversation.append(turn)
                     
                     # Yield incremental update
                     yield {
@@ -138,6 +182,7 @@ async def predict_stream(request: PredictRequest):
                             "bearish_thesis": node_output.get("bearish_thesis"),
                             "synthesis_report": node_output.get("synthesis_report"),
                             "prediction": node_output.get("prediction"),
+                            "conversation_turn": turn,
                             "current_step": node_name
                         })
                     }
@@ -150,6 +195,10 @@ async def predict_stream(request: PredictRequest):
                     "price": final_state["fundamentals"].get("price", 0.0),
                     "pe_ratio": final_state["fundamentals"].get("pe_ratio"),
                     "eps": final_state["fundamentals"].get("eps"),
+                    "press_release": press_release,
+                    "fundamentals": final_state.get("fundamentals", {}),
+                    "market_data": final_state.get("market_data", []),
+                    "conversation": conversation,
                     "direction": final_state["prediction"].get("direction"),
                     "change_percent": final_state["prediction"].get("change_percent"),
                     "rating": final_state["prediction"].get("rating"),

@@ -1,4 +1,27 @@
 let stockChart = null;
+let currentChartTicker = null;
+let currentMarketData = [];
+let currentPrediction = null;
+let conversationTurns = [];
+let selectedConversationOrder = null;
+
+const THEME_STORAGE_KEY = 'aura-theme';
+
+const API_BASE_URL = (() => {
+    if (window.AURA_API_BASE_URL) {
+        return window.AURA_API_BASE_URL.replace(/\/$/, '');
+    }
+
+    const localHosts = ['localhost', '127.0.0.1', '::1'];
+    const isLocalPreview = window.location.protocol === 'file:' ||
+        (localHosts.includes(window.location.hostname) && window.location.port && window.location.port !== '8000');
+
+    return isLocalPreview ? 'http://localhost:8000' : '';
+})();
+
+function apiUrl(path) {
+    return `${API_BASE_URL}${path}`;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     initApp();
@@ -8,9 +31,18 @@ function initApp() {
     const form = document.getElementById('predict-form');
     const toggleConsole = document.getElementById('toggle-console');
     const logsSection = document.getElementById('logs-section');
+    const configurationToggle = document.getElementById('configuration-toggle');
+    const configurationSection = document.querySelector('.configuration-section');
     
+    initTheme();
+
     // Form submission
     form.addEventListener('submit', handleFormSubmit);
+
+    configurationToggle.addEventListener('click', () => {
+        const isCollapsed = configurationSection.classList.toggle('collapsed');
+        configurationToggle.setAttribute('aria-expanded', String(!isCollapsed));
+    });
     
     // Toggle logs console expansion
     toggleConsole.addEventListener('click', () => {
@@ -25,6 +57,41 @@ function initApp() {
 
     // Load history list on startup
     loadHistory();
+    resetConversationPanel();
+}
+
+function getCssVar(name) {
+    return getComputedStyle(document.body).getPropertyValue(name).trim();
+}
+
+function initTheme() {
+    const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+    const systemTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    applyTheme(storedTheme || systemTheme, false);
+
+    document.querySelectorAll('.theme-option').forEach(button => {
+        button.addEventListener('click', () => {
+            applyTheme(button.dataset.theme, true);
+        });
+    });
+}
+
+function applyTheme(theme, persist) {
+    const normalizedTheme = theme === 'light' ? 'light' : 'dark';
+    document.body.dataset.theme = normalizedTheme;
+    document.querySelectorAll('.theme-option').forEach(button => {
+        const isActive = button.dataset.theme === normalizedTheme;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
+    });
+
+    if (persist) {
+        localStorage.setItem(THEME_STORAGE_KEY, normalizedTheme);
+    }
+
+    if (currentChartTicker && currentMarketData.length > 0) {
+        renderChart(currentChartTicker, currentMarketData, currentPrediction);
+    }
 }
 
 // Format currency
@@ -69,6 +136,8 @@ function resetDashboardUI(ticker) {
     document.getElementById('metrics-eps').textContent = 'N/A';
     document.getElementById('metrics-cap').textContent = 'N/A';
     document.getElementById('metrics-sector').textContent = 'N/A';
+    updateUserInputReview('');
+    resetConversationPanel();
     
     // Bul/Bear cards
     document.getElementById('bull-thesis-output').innerHTML = `
@@ -106,10 +175,136 @@ function resetDashboardUI(ticker) {
         stockChart.destroy();
         stockChart = null;
     }
+    currentChartTicker = null;
+    currentMarketData = [];
+    currentPrediction = null;
+}
+
+function updateUserInputReview(text) {
+    const review = document.getElementById('user-input-review');
+    const content = document.getElementById('user-input-content');
+    if (!text) {
+        review.classList.add('hidden');
+        content.textContent = '';
+        return;
+    }
+
+    content.textContent = text;
+    review.classList.remove('hidden');
+}
+
+function resetConversationPanel() {
+    conversationTurns = [];
+    selectedConversationOrder = null;
+    document.getElementById('conversation-status').textContent = 'Awaiting debate';
+    renderConversationList();
+    renderConversationDetail(null);
+}
+
+function normalizeTurn(turn, index) {
+    return {
+        step: turn.step || 'unknown',
+        role: turn.role || 'system',
+        label: turn.label || 'Expert',
+        iteration: Number.isFinite(Number(turn.iteration)) ? Number(turn.iteration) : 0,
+        content: turn.content || '',
+        order: Number.isFinite(Number(turn.order)) ? Number(turn.order) : index + 1
+    };
+}
+
+function setConversationTurns(turns, statusText = null) {
+    conversationTurns = (turns || [])
+        .filter(turn => turn && turn.content)
+        .map((turn, index) => normalizeTurn(turn, index))
+        .sort((a, b) => a.order - b.order);
+
+    selectedConversationOrder = conversationTurns.length ? conversationTurns[conversationTurns.length - 1].order : null;
+    document.getElementById('conversation-status').textContent = statusText ||
+        (conversationTurns.length ? `${conversationTurns.length} turns available` : 'Awaiting debate');
+    renderConversationList();
+    renderConversationDetail(conversationTurns.find(turn => turn.order === selectedConversationOrder));
+}
+
+function addConversationTurn(turn) {
+    if (!turn || !turn.content) return;
+
+    const normalizedTurn = normalizeTurn(turn, conversationTurns.length);
+    conversationTurns.push(normalizedTurn);
+    selectedConversationOrder = normalizedTurn.order;
+    document.getElementById('conversation-status').textContent = `${conversationTurns.length} turns recorded`;
+    renderConversationList();
+    renderConversationDetail(normalizedTurn);
+}
+
+function plainTextFromMarkdown(text) {
+    const div = document.createElement('div');
+    div.innerHTML = marked.parse(text || '');
+    return div.textContent.replace(/\s+/g, ' ').trim();
+}
+
+function renderConversationList() {
+    const list = document.getElementById('conversation-list');
+    if (!conversationTurns.length) {
+        list.innerHTML = '<div class="conversation-empty">No expert turns yet.</div>';
+        return;
+    }
+
+    list.innerHTML = '';
+    conversationTurns.forEach(turn => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `conversation-turn ${turn.role}`;
+        if (turn.order === selectedConversationOrder) {
+            button.classList.add('active');
+        }
+        button.innerHTML = `
+            <div class="turn-top">
+                <span class="turn-label">${turn.label}</span>
+                <span class="turn-order">#${turn.order}</span>
+            </div>
+            <div class="turn-summary">${plainTextFromMarkdown(turn.content) || 'No content available.'}</div>
+        `;
+        button.addEventListener('click', () => {
+            selectedConversationOrder = turn.order;
+            renderConversationList();
+            renderConversationDetail(turn);
+        });
+        list.appendChild(button);
+    });
+}
+
+function renderConversationDetail(turn) {
+    const meta = document.getElementById('conversation-detail-meta');
+    const content = document.getElementById('conversation-detail-content');
+    if (!turn) {
+        meta.textContent = 'Select a turn to review the agent position.';
+        content.innerHTML = `
+            <div class="agent-placeholder inline-placeholder">
+                <i class="fa-solid fa-comments placeholder-icon"></i>
+                <p>The expert debate transcript will appear here as agents respond.</p>
+            </div>`;
+        return;
+    }
+
+    const iterationLabel = turn.iteration > 0 ? `Iteration ${turn.iteration}` : 'Final';
+    meta.textContent = `${turn.label} // ${iterationLabel} // Turn ${turn.order}`;
+    content.innerHTML = marked.parse(turn.content);
+}
+
+function buildLegacyConversation(item) {
+    if (!item || !item.synthesis_report) return [];
+    return [{
+        step: 'moderator',
+        role: 'moderator',
+        label: 'Moderator',
+        iteration: 0,
+        content: `${item.synthesis_report}\n\n*Full bull/bear transcript unavailable for this older record.*`,
+        order: 1
+    }];
 }
 
 // Submit action
-async def handleFormSubmit(event) {
+async function handleFormSubmit(event) {
     event.preventDefault();
     
     const tickerInput = document.getElementById('ticker');
@@ -127,9 +322,10 @@ async def handleFormSubmit(event) {
     btnSubmit.disabled = true;
     
     resetDashboardUI(ticker);
+    updateUserInputReview(pressRelease);
     
     try {
-        const response = await fetch('/api/predict/stream', {
+        const response = await fetch(apiUrl('/api/predict/stream'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -214,6 +410,9 @@ function handleSSEUpdate(event, data) {
     
     if (event === 'done') {
         appendLogLine("LangGraph workflow executed successfully.", "success");
+        document.getElementById('conversation-status').textContent = conversationTurns.length
+            ? `${conversationTurns.length} turns complete`
+            : 'No transcript captured';
         document.getElementById('ticker-auto-badge').textContent = 'IDLE';
         document.getElementById('ticker-auto-badge').className = 'ticker-badge';
         return;
@@ -225,6 +424,10 @@ function handleSSEUpdate(event, data) {
     if (data.logs && data.logs.length > 0) {
         const lastLog = data.logs[data.logs.length - 1];
         appendLogLine(lastLog, "system");
+    }
+
+    if (data.conversation_turn) {
+        addConversationTurn(data.conversation_turn);
     }
     
     // Update timeline visual indicators
@@ -291,9 +494,18 @@ function updateFundamentals(f) {
 // Draw chart using Chart.js
 function renderChart(ticker, marketData, prediction = null) {
     const ctx = document.getElementById('stockChart').getContext('2d');
+    currentChartTicker = ticker;
+    currentMarketData = marketData;
+    currentPrediction = prediction;
     
     const dates = marketData.map(d => d.date);
     const prices = marketData.map(d => d.close);
+    const chartLine = getCssVar('--chart-line') || '#3b82f6';
+    const chartFill = getCssVar('--chart-fill') || 'rgba(59, 130, 246, 0.25)';
+    const chartGrid = getCssVar('--chart-grid') || 'rgba(255, 255, 255, 0.03)';
+    const chartTick = getCssVar('--chart-tick') || 'rgba(255, 255, 255, 0.4)';
+    const bullColor = getCssVar('--accent-bull') || '#4ade80';
+    const bearColor = getCssVar('--accent-bear') || '#f87171';
     
     // Setup projection variables
     let finalDates = [...dates];
@@ -316,12 +528,12 @@ function renderChart(ticker, marketData, prediction = null) {
         forecastDataset = {
             label: `${ticker} Projection`,
             data: Array(prices.length - 1).fill(null).concat([lastPrice, projPrice]),
-            borderColor: prediction.direction === "UP" ? 'rgba(74, 222, 128, 1)' : 'rgba(248, 113, 113, 1)',
+            borderColor: prediction.direction === "UP" ? bullColor : bearColor,
             borderDash: [5, 5],
             borderWidth: 2.5,
             fill: false,
             pointRadius: [].concat(Array(prices.length - 1).fill(0)).concat([2, 5]),
-            pointBackgroundColor: prediction.direction === "UP" ? '#4ade80' : '#f87171'
+            pointBackgroundColor: prediction.direction === "UP" ? bullColor : bearColor
         };
         
         // Append projection labels
@@ -337,14 +549,14 @@ function renderChart(ticker, marketData, prediction = null) {
     
     // Gradient fill for main chart
     const gradient = ctx.createLinearGradient(0, 0, 0, 200);
-    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.25)');
+    gradient.addColorStop(0, chartFill);
     gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
     
     const datasets = [
         {
             label: `${ticker} Price History`,
             data: prices,
-            borderColor: '#3b82f6',
+            borderColor: chartLine,
             borderWidth: 2,
             backgroundColor: gradient,
             fill: true,
@@ -374,20 +586,20 @@ function renderChart(ticker, marketData, prediction = null) {
                 tooltip: {
                     mode: 'index',
                     intersect: false,
-                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                    titleColor: '#f8fafc',
-                    bodyColor: '#cbd5e1',
-                    borderColor: 'rgba(255, 255, 255, 0.1)',
+                    backgroundColor: getCssVar('--bg-console') || 'rgba(15, 23, 42, 0.95)',
+                    titleColor: getCssVar('--text-primary') || '#f8fafc',
+                    bodyColor: getCssVar('--text-secondary') || '#cbd5e1',
+                    borderColor: getCssVar('--border-color') || 'rgba(255, 255, 255, 0.1)',
                     borderWidth: 1
                 }
             },
             scales: {
                 x: {
                     grid: {
-                        color: 'rgba(255, 255, 255, 0.03)'
+                        color: chartGrid
                     },
                     ticks: {
-                        color: 'rgba(255, 255, 255, 0.4)',
+                        color: chartTick,
                         maxTicksLimit: 8,
                         font: {
                             size: 10
@@ -396,10 +608,10 @@ function renderChart(ticker, marketData, prediction = null) {
                 },
                 y: {
                     grid: {
-                        color: 'rgba(255, 255, 255, 0.03)'
+                        color: chartGrid
                     },
                     ticks: {
-                        color: 'rgba(255, 255, 255, 0.4)',
+                        color: chartTick,
                         font: {
                             size: 10
                         }
@@ -455,18 +667,15 @@ function updatePrediction(p, report, fundamentals) {
     document.getElementById('synthesis-report-output').innerHTML = marked.parse(report);
     
     // Re-render chart incorporating projections
-    if (fundamentals && stockChart) {
-        renderChart(fundamentals.ticker, stockChart.data.datasets[0].data.map((v, i) => ({
-            date: stockChart.data.labels[i],
-            close: v
-        })), p);
+    if (fundamentals && stockChart && currentMarketData.length > 0) {
+        renderChart(fundamentals.ticker, currentMarketData, p);
     }
 }
 
 // Load and populate sidebar history
-async def loadHistory() {
+async function loadHistory() {
     try {
-        const response = await fetch('/api/history');
+        const response = await fetch(apiUrl('/api/history'));
         if (!response.ok) return;
         
         const history = await response.json();
@@ -483,8 +692,9 @@ async def loadHistory() {
             el.className = 'history-item';
             
             const ratingClass = (item.rating || 'HOLD').toLowerCase().replace(' ', '-');
-            const changeClass = item.change_percent > 0 ? 'change-up' : (item.change_percent < 0 ? 'change-down' : 'change-flat');
-            const arrow = item.direction === 'UP' ? '↗' : (item.direction === 'DOWN' ? '↘' : '→');
+            const change = Number(item.change_percent || 0);
+            const changeClass = change > 0 ? 'change-up' : (change < 0 ? 'change-down' : 'change-flat');
+            const arrow = item.direction === 'UP' ? 'UP' : (item.direction === 'DOWN' ? 'DOWN' : 'FLAT');
             
             el.innerHTML = `
                 <div class="history-top">
@@ -495,7 +705,7 @@ async def loadHistory() {
                     <span class="history-rating rating-${ratingClass.includes('buy') ? 'buy' : (ratingClass.includes('sell') ? 'sell' : 'hold')}">${item.rating}</span>
                 </div>
                 <div class="history-bottom">
-                    <span class="history-change ${changeClass}">${arrow} ${item.change_percent > 0 ? '+' : ''}${item.change_percent.toFixed(2)}%</span>
+                    <span class="history-change ${changeClass}">${arrow} ${change > 0 ? '+' : ''}${change.toFixed(2)}%</span>
                     <span class="history-time">${item.timestamp}</span>
                 </div>
             `;
@@ -511,12 +721,29 @@ async def loadHistory() {
 // Restore a historical record on click
 function loadHistoricalRecord(item) {
     document.getElementById('ticker').value = item.ticker;
+    const fundamentals = item.fundamentals || {};
+    const price = item.price ?? fundamentals.price ?? 0;
+    const rating = item.rating || 'HOLD';
+    const direction = item.direction || 'STABLE';
+    const change = Number(item.change_percent || 0);
+    const turns = Array.isArray(item.conversation) && item.conversation.length > 0
+        ? item.conversation
+        : buildLegacyConversation(item);
+    const latestBullTurn = [...turns].reverse().find(turn => turn.role === 'bullish');
+    const latestBearTurn = [...turns].reverse().find(turn => turn.role === 'bearish');
     
     // Set headers
-    document.getElementById('header-stock-name').textContent = item.company_name;
+    document.getElementById('header-stock-name').textContent = item.company_name || fundamentals.name || item.ticker;
     document.getElementById('header-stock-meta').textContent = `Historical record from ${item.timestamp}`;
     document.getElementById('ticker-auto-badge').textContent = 'HISTORICAL';
     document.getElementById('ticker-auto-badge').className = 'ticker-badge';
+    updateUserInputReview(item.press_release || '');
+    setConversationTurns(
+        turns,
+        Array.isArray(item.conversation) && item.conversation.length > 0
+            ? `${turns.length} historical turns`
+            : 'Legacy record: transcript unavailable'
+    );
     
     // Logs Console update
     const consoleOutput = document.getElementById('console-output');
@@ -529,26 +756,28 @@ function loadHistoricalRecord(item) {
     });
     
     // Update fundamentals
-    document.getElementById('metrics-price').textContent = formatCurrency(item.price);
+    document.getElementById('metrics-price').textContent = formatCurrency(price);
     document.getElementById('price-badge-container').style.display = 'flex';
     document.getElementById('metrics-pe').textContent = item.pe_ratio !== null && item.pe_ratio !== undefined ? item.pe_ratio.toFixed(2) : 'N/A';
     document.getElementById('metrics-eps').textContent = item.eps !== null && item.eps !== undefined ? formatCurrency(item.eps) : 'N/A';
-    document.getElementById('metrics-cap').textContent = 'N/A'; // not saved in history to save space
-    document.getElementById('metrics-sector').textContent = 'Loaded Historical';
+    document.getElementById('metrics-cap').textContent = formatMarketCap(fundamentals.market_cap);
+    document.getElementById('metrics-sector').textContent = fundamentals.sector || 'Loaded Historical';
     
-    // Bul/Bear cards (Note: full debate is not saved in history index, so we generate mock panels or display summaries)
-    document.getElementById('bull-thesis-output').innerHTML = `<p><em>Bullish thesis loaded. Refer to synthesis report below for summarized advocate consensus.</em></p>`;
-    document.getElementById('bear-thesis-output').innerHTML = `<p><em>Bearish thesis loaded. Refer to synthesis report below for summarized challenger criticisms.</em></p>`;
+    document.getElementById('bull-thesis-output').innerHTML = latestBullTurn
+        ? marked.parse(latestBullTurn.content)
+        : `<p><em>Bullish transcript unavailable for this older record.</em></p>`;
+    document.getElementById('bear-thesis-output').innerHTML = latestBearTurn
+        ? marked.parse(latestBearTurn.content)
+        : `<p><em>Bearish transcript unavailable for this older record.</em></p>`;
     
     // Predictions
     const ratingBadge = document.getElementById('prediction-rating');
-    ratingBadge.textContent = item.rating;
+    ratingBadge.textContent = rating;
     ratingBadge.className = 'rating-badge';
-    const ratingClass = item.rating.toLowerCase().replace(' ', '-');
+    const ratingClass = rating.toLowerCase().replace(' ', '-');
     ratingBadge.classList.add(ratingClass);
     
     const dirEl = document.getElementById('pred-direction');
-    const direction = item.direction;
     dirEl.className = `pred-display ${direction.toLowerCase()}`;
     if (direction === 'UP') {
         dirEl.innerHTML = '<i class="fa-solid fa-circle-up"></i> <span>BULLISH</span>';
@@ -559,7 +788,6 @@ function loadHistoricalRecord(item) {
     }
     
     const changeEl = document.getElementById('pred-change');
-    const change = item.change_percent;
     changeEl.textContent = `${change > 0 ? '+' : ''}${change.toFixed(2)}%`;
     if (change > 0) {
         changeEl.className = 'pred-value change-up';
@@ -574,26 +802,31 @@ function loadHistoricalRecord(item) {
     document.getElementById('pred-confidence-fill').style.width = `${confPercent}%`;
     document.getElementById('pred-confidence-value').textContent = `${confPercent}%`;
     
-    document.getElementById('synthesis-report-output').innerHTML = marked.parse(item.synthesis_report);
+    document.getElementById('synthesis-report-output').innerHTML = marked.parse(item.synthesis_report || '');
     
-    // Render static charts from history
-    // Since we don't have historical points, generate chart with mock history and a projection line
-    const mockHist = [];
-    let basePrice = item.price;
-    const now = new Date();
-    for (let i = 30; i > 0; i--) {
-        const d = new Date(now);
-        d.setDate(now.getDate() - i);
-        mockHist.push({
-            date: d.toISOString().split('T')[0],
-            close: Number((basePrice - (i * 0.4) + Math.random() * 2).toFixed(2))
+    let chartData = Array.isArray(item.market_data) && item.market_data.length > 0 ? item.market_data : [];
+    if (chartData.length === 0) {
+        chartData = [];
+        let basePrice = price;
+        const now = new Date();
+        for (let i = 30; i > 0; i--) {
+            const d = new Date(now);
+            d.setDate(now.getDate() - i);
+            chartData.push({
+                date: d.toISOString().split('T')[0],
+                close: Number((basePrice - (i * 0.4) + Math.random() * 2).toFixed(2))
+            });
+        }
+        chartData.push({
+            date: now.toISOString().split('T')[0],
+            close: price
         });
     }
-    // Make last element exact
-    mockHist.push({
-        date: now.toISOString().split('T')[0],
-        close: item.price
-    });
     
-    renderChart(item.ticker, mockHist, item);
+    renderChart(item.ticker, chartData, {
+        direction,
+        change_percent: change,
+        rating,
+        confidence: item.confidence || 0.5
+    });
 }

@@ -1,9 +1,14 @@
 import os
 import logging
+from pathlib import Path
+from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 logger = logging.getLogger(__name__)
+
+ENV_PATH = Path(__file__).resolve().parents[4] / ".env"
+load_dotenv(dotenv_path=ENV_PATH)
 
 def get_llm():
     """
@@ -16,7 +21,7 @@ def get_llm():
         api_key = os.getenv("OPENAI_API_KEY")
         if api_key and api_key.strip():
             logger.info("Initializing OpenAI ChatOpenAI model.")
-            return ChatOpenAI(model="gpt-4o-mini", temperature=0.3, api_key=api_key)
+            return ChatOpenAI(model="gpt-5.4-mini-2026-03-17", temperature=0.3, api_key=api_key)
             
     elif provider == "gemini":
         api_key = os.getenv("GEMINI_API_KEY")
